@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Elastic.Apm.SerilogEnricher;
 using Elastic.CommonSchema.Serilog;
+using Elasticsearch.Net;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Sinks.Elasticsearch;
 
@@ -20,6 +21,21 @@ public static class SerilogSetupExtensions
         {
             var environment = context.HostingEnvironment.EnvironmentName ?? "Unknown";
             var elasticsearchUrl = configuration["ELASTICSEARCH_URL"] ?? "http://localhost:9200";
+            var elasticsearchUser = configuration["ELASTICSEARCH_USERNAME"];
+            var elasticsearchPassword = configuration["ELASTICSEARCH_PASSWORD"];
+
+            var sinkOptions = new ElasticsearchSinkOptions(new Uri(elasticsearchUrl))
+            {
+                IndexFormat = indexName,
+                AutoRegisterTemplate = false,
+                CustomFormatter = new EcsTextFormatter()
+            };
+
+            if (!string.IsNullOrWhiteSpace(elasticsearchUser) || !string.IsNullOrWhiteSpace(elasticsearchPassword))
+            {
+                sinkOptions.ModifyConnectionSettings = connection =>
+                    connection.BasicAuthentication(elasticsearchUser ?? "elastic", elasticsearchPassword ?? string.Empty);
+            }
 
             loggerConfiguration
                 .ReadFrom.Configuration(configuration)
@@ -33,12 +49,7 @@ public static class SerilogSetupExtensions
                 .Enrich.With<ElasticApmLogEnricher>()
                 .Enrich.WithElasticApmCorrelationInfo()
                 .WriteTo.Console(new EcsTextFormatter())
-                .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri(elasticsearchUrl))
-                {
-                    IndexFormat = indexName,
-                    AutoRegisterTemplate = false,
-                    CustomFormatter = new EcsTextFormatter()
-                });
+                .WriteTo.Elasticsearch(sinkOptions);
         });
     }
 }

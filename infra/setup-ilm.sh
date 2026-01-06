@@ -2,13 +2,20 @@
 set -e
 
 ES_URL="${ES_URL:-http://elasticsearch:9200}"
+ES_USERNAME="${ES_USERNAME:-}"
+ES_PASSWORD="${ES_PASSWORD:-}"
 
-until curl -s "$ES_URL" >/dev/null; do
+AUTH=""
+if [ -n "$ES_USERNAME" ] || [ -n "$ES_PASSWORD" ]; then
+  AUTH="-u ${ES_USERNAME:-elastic}:${ES_PASSWORD}"
+fi
+
+until curl -s $AUTH "$ES_URL" >/dev/null; do
   echo "Waiting for Elasticsearch..."
   sleep 2
 done
 
-curl -s -X PUT "$ES_URL/_ilm/policy/logs-embeddra-7d-delete" \
+curl -s $AUTH -X PUT "$ES_URL/_ilm/policy/logs-embeddra-7d-delete" \
   -H "Content-Type: application/json" \
   -d '{
     "policy": {
@@ -26,7 +33,7 @@ curl -s -X PUT "$ES_URL/_ilm/policy/logs-embeddra-7d-delete" \
     }
   }' >/dev/null
 
-curl -s -X PUT "$ES_URL/_index_template/logs-embeddra-template" \
+curl -s $AUTH -X PUT "$ES_URL/_index_template/logs-embeddra-template" \
   -H "Content-Type: application/json" \
   -d '{
     "index_patterns": ["logs-embeddra-*"],

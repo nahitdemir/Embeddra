@@ -14,13 +14,25 @@ Embeddra is a .NET 8 monorepo skeleton for admin/search APIs, a background worke
 
 ## Local run (summary)
 
+Run everything (infra + apps) with a single command:
+
+```bash
+./dev.sh
+```
+
+Stop infra:
+
+```bash
+./dev.sh down
+```
+
 Build:
 
 ```bash
 dotnet build
 ```
 
-Run services:
+Run services individually:
 
 ```bash
 dotnet run --project apps/Admin/Embeddra.Admin.WebApi
@@ -35,3 +47,8 @@ Health checks:
 - Worker: http://localhost:5310/health
 
 Ports come from each project's `Properties/launchSettings.json`.
+
+Elastic login (local):
+
+- Username: `elastic`
+- Password: `embeddra`

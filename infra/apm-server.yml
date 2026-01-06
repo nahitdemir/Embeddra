@@ -3,9 +3,15 @@ apm-server:
   kibana:
     enabled: true
     host: "http://kibana:5601"
+    username: "${ELASTIC_USERNAME:elastic}"
+    password: "${ELASTIC_PASSWORD:embeddra}"
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
+  username: "${ELASTIC_USERNAME:elastic}"
+  password: "${ELASTIC_PASSWORD:embeddra}"
 
 setup.kibana:
   host: "http://kibana:5601"
+  username: "${ELASTIC_USERNAME:elastic}"
+  password: "${ELASTIC_PASSWORD:embeddra}"

@@ -1,0 +1,13 @@
+server.host: "0.0.0.0"
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+elasticsearch.username: "kibana_system"
+elasticsearch.password: "embeddra"
+xpack.security.encryptionKey: "embeddra-dev-encryption-key-please-change-0001"
+xpack.encryptedSavedObjects.encryptionKey: "embeddra-dev-encryption-key-please-change-0001"
+xpack.reporting.encryptionKey: "embeddra-dev-encryption-key-please-change-0001"
+xpack.fleet.enabled: true
+
+xpack.fleet.registryUrl: "http://package-registry:8080"
+xpack.fleet.packages:
+  - name: apm
+    version: 8.12.2

@@ -47,6 +47,8 @@ Bu dokuman lokal Elastic Stack ile log/trace gozlemi ve maliyet kontrolu kuralla
   - `embeddra-admin`
   - `embeddra-search`
   - `embeddra-worker`
+- APM integration package, Kibana ile otomatik kurulur (lokal package-registry).
+- Fleet icin Kibana security aciktir (login: elastic / embeddra).
 
 ### Worker transaction/spans
 
@@ -76,3 +78,5 @@ Bu dokuman lokal Elastic Stack ile log/trace gozlemi ve maliyet kontrolu kuralla
    - Bir request at.
    - Loglardan `trace.id` degerini kopyala.
    - APM'de ayni `trace.id` ile filtrele.
+4. Login:
+   - Kibana kullanicisi `elastic`, sifre `embeddra`.

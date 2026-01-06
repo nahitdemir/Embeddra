@@ -3,6 +3,7 @@ using Embeddra.BuildingBlocks.Audit;
 using Embeddra.BuildingBlocks.Correlation;
 using Embeddra.BuildingBlocks.Messaging;
 using Elastic.Apm;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Embeddra.Worker.Host;
 
@@ -11,12 +12,12 @@ public sealed class Worker : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
     private readonly ILogger<Worker> _logger;
-    private readonly IAuditLogWriter _auditLogWriter;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public Worker(ILogger<Worker> logger, IAuditLogWriter auditLogWriter)
+    public Worker(ILogger<Worker> logger, IServiceScopeFactory scopeFactory)
     {
         _logger = logger;
-        _auditLogWriter = auditLogWriter;
+        _scopeFactory = scopeFactory;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -36,9 +37,12 @@ public sealed class Worker : BackgroundService
         var transaction = Agent.Tracer.StartTransaction("IngestionJob", "background");
         var stopwatch = Stopwatch.StartNew();
 
+        using var scope = _scopeFactory.CreateScope();
+        var auditLogWriter = scope.ServiceProvider.GetRequiredService<IAuditLogWriter>();
+
         try
         {
-            await _auditLogWriter.WriteAsync(
+            await auditLogWriter.WriteAsync(
                 new AuditLogEntry(AuditActions.IngestionJobStarted, "worker", new { correlation_id = correlationId }),
                 cancellationToken);
 
@@ -80,7 +84,7 @@ public sealed class Worker : BackgroundService
                 bulkStopwatch.ElapsedMilliseconds,
                 failedItems);
 
-            await _auditLogWriter.WriteAsync(
+            await auditLogWriter.WriteAsync(
                 new AuditLogEntry(
                     AuditActions.IngestionJobCompleted,
                     "worker",
@@ -101,7 +105,7 @@ public sealed class Worker : BackgroundService
 
             _logger.LogError(ex, "ingestion_job_failed {job_duration_ms}", stopwatch.ElapsedMilliseconds);
 
-            await _auditLogWriter.WriteAsync(
+            await auditLogWriter.WriteAsync(
                 new AuditLogEntry(
                     AuditActions.IngestionJobFailed,
                     "worker",

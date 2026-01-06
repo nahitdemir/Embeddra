@@ -2,6 +2,12 @@
 
 ## Local run
 
+Single command (infra + apps):
+
+```bash
+./dev.sh
+```
+
 Start dependencies:
 
 ```bash
@@ -22,11 +28,12 @@ Services:
 - RabbitMQ management: http://localhost:15672 (user: embeddra, pass: embeddra)
 - Postgres: localhost:5433 (db: embeddra, user: embeddra, pass: embeddra)
 - Redis: localhost:6379
+- Kibana login: elastic / embeddra
 
 Quick checks:
 
 ```bash
-curl http://localhost:9200
+curl -u elastic:embeddra http://localhost:9200
 curl http://localhost:5601
 curl http://localhost:8200
 curl http://localhost:15672
