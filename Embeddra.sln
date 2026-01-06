@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{2EA99317-FCDC-428D-BAD3-89AB2F25ACB8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Embeddra.Admin.Api", "apps\Embeddra.Admin.Api\Embeddra.Admin.Api.csproj", "{29FD40B9-C63D-4747-A7CE-5ED2D46017EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Embeddra.Search.Api", "apps\Embeddra.Search.Api\Embeddra.Search.Api.csproj", "{632F90EE-65B1-4350-9A07-F4BD913713A0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Embeddra.Worker", "apps\Embeddra.Worker\Embeddra.Worker.csproj", "{BD303015-6D24-4AA1-B268-B5599F565C70}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{186BC1A1-F05B-4432-83D4-66604F1F5879}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Embeddra.Shared", "src\Embeddra.Shared\Embeddra.Shared.csproj", "{88372851-314A-4FA3-9355-13DF609936A2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{29FD40B9-C63D-4747-A7CE-5ED2D46017EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29FD40B9-C63D-4747-A7CE-5ED2D46017EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29FD40B9-C63D-4747-A7CE-5ED2D46017EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29FD40B9-C63D-4747-A7CE-5ED2D46017EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{632F90EE-65B1-4350-9A07-F4BD913713A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{632F90EE-65B1-4350-9A07-F4BD913713A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{632F90EE-65B1-4350-9A07-F4BD913713A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{632F90EE-65B1-4350-9A07-F4BD913713A0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD303015-6D24-4AA1-B268-B5599F565C70}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD303015-6D24-4AA1-B268-B5599F565C70}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD303015-6D24-4AA1-B268-B5599F565C70}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD303015-6D24-4AA1-B268-B5599F565C70}.Release|Any CPU.Build.0 = Release|Any CPU
+		{88372851-314A-4FA3-9355-13DF609936A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88372851-314A-4FA3-9355-13DF609936A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88372851-314A-4FA3-9355-13DF609936A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88372851-314A-4FA3-9355-13DF609936A2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{29FD40B9-C63D-4747-A7CE-5ED2D46017EB} = {2EA99317-FCDC-428D-BAD3-89AB2F25ACB8}
+		{632F90EE-65B1-4350-9A07-F4BD913713A0} = {2EA99317-FCDC-428D-BAD3-89AB2F25ACB8}
+		{BD303015-6D24-4AA1-B268-B5599F565C70} = {2EA99317-FCDC-428D-BAD3-89AB2F25ACB8}
+		{88372851-314A-4FA3-9355-13DF609936A2} = {186BC1A1-F05B-4432-83D4-66604F1F5879}
+	EndGlobalSection
+EndGlobal
