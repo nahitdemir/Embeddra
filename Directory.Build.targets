@@ -1,0 +1,15 @@
+<Project>
+  <ItemGroup>
+    <PackageReference Update="Serilog.AspNetCore" Version="$(SerilogAspNetCoreVersion)" />
+    <PackageReference Update="Serilog.Sinks.Console" Version="$(SerilogSinksConsoleVersion)" />
+    <PackageReference Update="Serilog.Sinks.Elasticsearch" Version="$(SerilogSinksElasticsearchVersion)" />
+    <PackageReference Update="Elastic.CommonSchema.Serilog" Version="$(ElasticCommonSchemaSerilogVersion)" />
+    <PackageReference Update="Elastic.Apm.NetCoreAll" Version="$(ElasticApmNetCoreAllVersion)" />
+    <PackageReference Update="Elastic.Apm.Extensions.Hosting" Version="$(ElasticApmExtensionsHostingVersion)" />
+    <PackageReference Update="Elastic.Apm.SerilogEnricher" Version="$(ElasticApmSerilogEnricherVersion)" />
+    <PackageReference Update="Microsoft.EntityFrameworkCore" Version="$(MicrosoftEntityFrameworkCoreVersion)" />
+    <PackageReference Update="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEntityFrameworkCorePostgresVersion)" />
+    <PackageReference Update="Microsoft.Extensions.Hosting" Version="$(MicrosoftExtensionsHostingVersion)" />
+    <PackageReference Update="Swashbuckle.AspNetCore" Version="$(SwashbuckleAspNetCoreVersion)" />
+  </ItemGroup>
+</Project>

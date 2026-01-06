@@ -4,10 +4,10 @@ Embeddra is a .NET 8 monorepo skeleton for admin/search APIs, a background worke
 
 ## Structure
 
-- apps/Embeddra.Admin.Api - Admin API (minimal API)
-- apps/Embeddra.Search.Api - Search API (minimal API)
-- apps/Embeddra.Worker - Worker service (background jobs + /health)
-- src/Embeddra.Shared - Shared class library
+- apps/Admin - Admin clean architecture (Domain/Application/Infrastructure/WebApi)
+- apps/Search - Search clean architecture (Domain/Application/Infrastructure/WebApi)
+- apps/Worker - Worker clean architecture (Application/Infrastructure/Host)
+- shared/BuildingBlocks - Cross-cutting logging, correlation, audit, observability
 - packages/widget - Widget package placeholder
 - infra - Infrastructure assets
 - docs - Documentation
@@ -23,9 +23,9 @@ dotnet build
 Run services:
 
 ```bash
-dotnet run --project apps/Embeddra.Admin.Api
-dotnet run --project apps/Embeddra.Search.Api
-dotnet run --project apps/Embeddra.Worker
+dotnet run --project apps/Admin/Embeddra.Admin.WebApi
+dotnet run --project apps/Search/Embeddra.Search.WebApi
+dotnet run --project apps/Worker/Embeddra.Worker.Host
 ```
 
 Health checks:

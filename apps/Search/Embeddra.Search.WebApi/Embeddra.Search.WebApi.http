@@ -1,0 +1,6 @@
+@Embeddra.Search.WebApi_HostAddress = http://localhost:5162
+
+GET {{Embeddra.Search.WebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
