@@ -1,0 +1,108 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - ELASTIC_PASSWORD=embeddra
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    environment:
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=embeddra
+    depends_on:
+      - elasticsearch
+      - package-registry
+    volumes:
+      - ./kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    ports:
+      - "5601:5601"
+
+  package-registry:
+    image: docker.elastic.co/package-registry/distribution:8.12.2
+    platform: linux/amd64
+
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:8.12.2
+    environment:
+      - ELASTIC_USERNAME=elastic
+      - ELASTIC_PASSWORD=embeddra
+    depends_on:
+      - elasticsearch
+      - kibana
+    volumes:
+      - ./apm-server.yml:/usr/share/apm-server/apm-server.yml:ro
+    ports:
+      - "8200:8200"
+
+  kibana-setup:
+    image: curlimages/curl:8.6.0
+    depends_on:
+      - kibana
+      - package-registry
+    environment:
+      - KIBANA_USERNAME=elastic
+      - KIBANA_PASSWORD=embeddra
+    volumes:
+      - ./setup-fleet.sh:/setup/setup-fleet.sh:ro
+    entrypoint: ["/bin/sh", "/setup/setup-fleet.sh"]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=embeddra
+      - RABBITMQ_DEFAULT_PASS=embeddra
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  postgres:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=embeddra
+      - POSTGRES_PASSWORD=embeddra
+      - POSTGRES_DB=embeddra
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+  es-setup:
+    image: curlimages/curl:8.6.0
+    depends_on:
+      - elasticsearch
+    environment:
+      - ES_USERNAME=elastic
+      - ES_PASSWORD=embeddra
+    volumes:
+      - ./setup-ilm.sh:/setup/setup-ilm.sh:ro
+    entrypoint: ["/bin/sh", "/setup/setup-ilm.sh"]
+
+volumes:
+  es_data:
+  rabbitmq_data:
+  pg_data:
+  redis_data:

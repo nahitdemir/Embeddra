@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Embeddra.Worker.Host-c3dce230-904c-4e56-b8d2-5304d875cc7c</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Embeddra.Worker.Application\Embeddra.Worker.Application.csproj" />
+    <ProjectReference Include="..\Embeddra.Worker.Infrastructure\Embeddra.Worker.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\shared\BuildingBlocks\Embeddra.BuildingBlocks.csproj" />
+  </ItemGroup>
+</Project>

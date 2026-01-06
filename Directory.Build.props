@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <SerilogAspNetCoreVersion>10.0.0</SerilogAspNetCoreVersion>
+    <SerilogSinksConsoleVersion>6.1.1</SerilogSinksConsoleVersion>
+    <SerilogSinksElasticsearchVersion>10.0.0</SerilogSinksElasticsearchVersion>
+    <ElasticCommonSchemaSerilogVersion>9.0.0</ElasticCommonSchemaSerilogVersion>
+    <ElasticApmNetCoreAllVersion>1.34.1</ElasticApmNetCoreAllVersion>
+    <ElasticApmExtensionsHostingVersion>1.34.1</ElasticApmExtensionsHostingVersion>
+    <ElasticApmSerilogEnricherVersion>9.0.0</ElasticApmSerilogEnricherVersion>
+    <MicrosoftEntityFrameworkCoreVersion>8.0.4</MicrosoftEntityFrameworkCoreVersion>
+    <NpgsqlEntityFrameworkCorePostgresVersion>8.0.4</NpgsqlEntityFrameworkCorePostgresVersion>
+    <MicrosoftExtensionsHostingVersion>8.0.0</MicrosoftExtensionsHostingVersion>
+    <SwashbuckleAspNetCoreVersion>6.4.0</SwashbuckleAspNetCoreVersion>
+  </PropertyGroup>
+</Project>

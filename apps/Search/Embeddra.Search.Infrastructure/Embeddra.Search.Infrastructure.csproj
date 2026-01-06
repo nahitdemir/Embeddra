@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Embeddra.Search.Application\Embeddra.Search.Application.csproj" />
+    <ProjectReference Include="..\Embeddra.Search.Domain\Embeddra.Search.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\BuildingBlocks\Embeddra.BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
