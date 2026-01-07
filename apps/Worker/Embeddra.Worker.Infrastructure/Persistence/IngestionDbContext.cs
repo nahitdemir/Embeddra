@@ -11,6 +11,7 @@ public sealed class IngestionDbContext : DbContext
 
     public DbSet<IngestionJob> IngestionJobs => Set<IngestionJob>();
     public DbSet<ProductRaw> ProductsRaw => Set<ProductRaw>();
+    public DbSet<TenantRecord> Tenants => Set<TenantRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,6 +35,16 @@ public sealed class IngestionDbContext : DbContext
             entity.Property(x => x.StartedAt).HasColumnName("started_at");
             entity.Property(x => x.CompletedAt).HasColumnName("completed_at");
             entity.HasIndex(x => x.TenantId).HasDatabaseName("ix_ingestion_jobs_tenant_id");
+        });
+
+        modelBuilder.Entity<TenantRecord>(entity =>
+        {
+            entity.ToTable("tenants");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.Name).HasColumnName("name");
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at");
         });
 
         modelBuilder.Entity<ProductRaw>(entity =>

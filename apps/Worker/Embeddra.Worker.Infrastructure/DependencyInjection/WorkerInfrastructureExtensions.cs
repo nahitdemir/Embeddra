@@ -29,6 +29,8 @@ public static class WorkerInfrastructureExtensions
         services.AddSingleton(EmbeddingOptions.FromConfiguration(configuration));
         services.AddSingleton<IEmbeddingClient, DeterministicEmbeddingClient>();
         services.AddSingleton<ElasticBulkIndexer>();
+        services.AddSingleton<ElasticsearchIndexManager>();
+        services.AddHostedService<ElasticsearchIndexInitializer>();
         services.AddScoped<IIngestionJobProcessor, IngestionJobProcessor>();
 
         return services;

@@ -17,17 +17,20 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
     private readonly IngestionDbContext _dbContext;
     private readonly IEmbeddingClient _embeddingClient;
     private readonly ElasticBulkIndexer _bulkIndexer;
+    private readonly ElasticsearchIndexManager _indexManager;
     private readonly ILogger<IngestionJobProcessor> _logger;
 
     public IngestionJobProcessor(
         IngestionDbContext dbContext,
         IEmbeddingClient embeddingClient,
         ElasticBulkIndexer bulkIndexer,
+        ElasticsearchIndexManager indexManager,
         ILogger<IngestionJobProcessor> logger)
     {
         _dbContext = dbContext;
         _embeddingClient = embeddingClient;
         _bulkIndexer = bulkIndexer;
+        _indexManager = indexManager;
         _logger = logger;
     }
 
@@ -56,6 +59,8 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             {
                 throw new InvalidOperationException($"Ingestion job not found: {jobId}");
             }
+
+            await _indexManager.EnsureProductIndexAsync(tenantId, cancellationToken);
 
             var now = DateTimeOffset.UtcNow;
             job.Status = IngestionJobStatus.Processing;
