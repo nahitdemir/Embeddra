@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using Embeddra.BuildingBlocks.Tenancy;
@@ -53,6 +54,12 @@ public sealed class SearchController : ControllerBase
         var knnK = NormalizeKnnK(request.KnnK, size);
         var knnCandidates = NormalizeKnnCandidates(request.KnnCandidates, knnK);
         var filters = BuildFilters(tenantId, request);
+
+        if (!await IndexExistsAsync(indexName, cancellationToken))
+        {
+            _logger.LogInformation("search_index_missing {index_name}", indexName);
+            return Ok(new SearchResponse(0, 0, 0, Array.Empty<SearchHit>(), SearchFacets.Empty));
+        }
 
         var stopwatch = Stopwatch.StartNew();
         var bm25Task = ExecuteBm25SearchAsync(indexName, request.Query!, bm25Size, filters, cancellationToken);
@@ -136,6 +143,27 @@ public sealed class SearchController : ControllerBase
         }
 
         return body;
+    }
+
+    private async Task<bool> IndexExistsAsync(string indexName, CancellationToken cancellationToken)
+    {
+        var client = _httpClientFactory.CreateClient("elasticsearch");
+        using var request = new HttpRequestMessage(HttpMethod.Head, $"/{indexName}");
+        using var response = await client.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new InvalidOperationException(
+            $"Elasticsearch index check failed {(int)response.StatusCode}: {body}");
     }
 
     private static object BuildBm25Query(
