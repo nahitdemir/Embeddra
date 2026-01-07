@@ -17,6 +17,25 @@ builder.Host.UseEmbeddraSerilog(builder.Configuration, "embeddra-search", "logs-
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("EmbeddraWidget", policy =>
+    {
+        policy.AllowAnyHeader()
+            .AllowAnyMethod()
+            .WithExposedHeaders("X-Correlation-Id");
+
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        if (allowedOrigins is { Length: > 0 })
+        {
+            policy.WithOrigins(allowedOrigins);
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            policy.AllowAnyOrigin();
+        }
+    });
+});
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, SearchRequestResponseLoggingPolicy>();
 builder.Services.AddEmbeddraSearchInfrastructure(builder.Configuration);
 builder.Services.AddEmbeddraApiKeyAuth(builder.Configuration, options =>
@@ -46,6 +65,7 @@ builder.Services.AddAllElasticApm();
 var app = builder.Build();
 
 app.UseEmbeddraMiddleware();
+app.UseCors("EmbeddraWidget");
 
 if (app.Environment.IsDevelopment())
 {

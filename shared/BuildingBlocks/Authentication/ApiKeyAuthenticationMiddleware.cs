@@ -25,6 +25,12 @@ public sealed class ApiKeyAuthenticationMiddleware
 
     public async Task Invoke(HttpContext context)
     {
+        if (HttpMethods.IsOptions(context.Request.Method))
+        {
+            await _next(context);
+            return;
+        }
+
         if (ShouldSkip(context.Request.Path.Value))
         {
             await _next(context);
