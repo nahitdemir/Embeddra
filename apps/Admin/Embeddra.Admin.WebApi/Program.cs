@@ -3,6 +3,7 @@ using Embeddra.BuildingBlocks.Audit;
 using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
 using Embeddra.BuildingBlocks.Observability;
+using Embeddra.Admin.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,7 @@ builder.Host.UseEmbeddraSerilog(builder.Configuration, "embeddra-admin", "logs-e
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddEmbeddraAdminPersistence(builder.Configuration);
 builder.Services.AddEmbeddraAuditLogging(builder.Configuration);
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, AdminRequestResponseLoggingPolicy>();
 builder.Services.AddAllElasticApm();
