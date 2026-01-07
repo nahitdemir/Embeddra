@@ -1,4 +1,5 @@
 using System.Reflection;
+using Embeddra.BuildingBlocks.Authentication;
 using Embeddra.BuildingBlocks.Audit;
 using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
@@ -18,6 +19,13 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddEmbeddraAdminPersistence(builder.Configuration);
 builder.Services.AddEmbeddraAuditLogging(builder.Configuration);
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, AdminRequestResponseLoggingPolicy>();
+builder.Services.AddEmbeddraApiKeyAuth(builder.Configuration, options =>
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        options.AllowAnonymousPathPrefixes.Add("/swagger");
+    }
+});
 builder.Services.AddAllElasticApm();
 
 var app = builder.Build();

@@ -4,6 +4,7 @@ using System.Text;
 using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
 using Embeddra.BuildingBlocks.Observability;
+using Embeddra.BuildingBlocks.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,13 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, SearchRequestResponseLoggingPolicy>();
+builder.Services.AddEmbeddraApiKeyAuth(builder.Configuration, options =>
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        options.AllowAnonymousPathPrefixes.Add("/swagger");
+    }
+});
 builder.Services.AddHttpClient("elasticsearch", client =>
 {
     var elasticsearchUrl = builder.Configuration["ELASTICSEARCH_URL"] ?? "http://localhost:9200";

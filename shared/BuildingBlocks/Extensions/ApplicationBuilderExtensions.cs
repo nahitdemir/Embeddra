@@ -1,3 +1,4 @@
+using Embeddra.BuildingBlocks.Authentication;
 using Embeddra.BuildingBlocks.Correlation;
 using Embeddra.BuildingBlocks.Exceptions;
 using Embeddra.BuildingBlocks.Logging;
@@ -12,6 +13,10 @@ public static class ApplicationBuilderExtensions
     {
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseMiddleware<TenantIdMiddleware>();
+        if (app.ApplicationServices.GetService<IApiKeyValidator>() is not null)
+        {
+            app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
+        }
         app.UseMiddleware<RequestResponseLoggingMiddleware>();
         app.UseMiddleware<ExceptionHandlingMiddleware>();
         return app;
