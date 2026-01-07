@@ -60,6 +60,7 @@ public sealed class RequestResponseLoggingMiddleware
 
             var responseInfo = await BuildResponseLogAsync(context, responseBody, shouldLogBody);
 
+            responseBody.Position = 0;
             await responseBody.CopyToAsync(originalBody);
             context.Response.Body = originalBody;
 
