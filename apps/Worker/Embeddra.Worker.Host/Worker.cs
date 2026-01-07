@@ -3,6 +3,8 @@ using System.Text.Json;
 using Embeddra.BuildingBlocks.Audit;
 using Embeddra.BuildingBlocks.Correlation;
 using Embeddra.BuildingBlocks.Messaging;
+using Embeddra.BuildingBlocks.Tenancy;
+using Embeddra.Worker.Application.Processing;
 using Elastic.Apm;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
@@ -131,12 +133,12 @@ public sealed class Worker : BackgroundService
 
         using var scope = _scopeFactory.CreateScope();
         var auditLogWriter = scope.ServiceProvider.GetRequiredService<IAuditLogWriter>();
+        var jobProcessor = scope.ServiceProvider.GetRequiredService<IIngestionJobProcessor>();
 
         var jobId = message.JobId ?? "unknown";
         var tenantId = message.TenantId ?? "unknown";
         var sourceType = message.SourceType ?? "unknown";
-        var batchSize = message.Count > 0 ? message.Count : Random.Shared.Next(50, 250);
-        var failedItems = 0;
+        TenantContext.TenantId = string.IsNullOrWhiteSpace(message.TenantId) ? null : message.TenantId;
 
         try
         {
@@ -154,34 +156,18 @@ public sealed class Worker : BackgroundService
                     }),
                 cancellationToken);
 
-            var dbSpan = transaction.StartSpan("DB.FetchProductsRaw", "db");
-            await Task.Delay(80, cancellationToken);
-            dbSpan.End();
-
-            var embeddingSpan = transaction.StartSpan("Embedding.Generate", "app");
-            await Task.Delay(120, cancellationToken);
-            embeddingSpan.End();
-
-            var esSpan = transaction.StartSpan("ES.BulkIndex", "elasticsearch");
-            var bulkStopwatch = Stopwatch.StartNew();
-            await Task.Delay(140, cancellationToken);
-            bulkStopwatch.Stop();
-            esSpan.End();
-
-            var updateSpan = transaction.StartSpan("DB.UpdateJobStatus", "db");
-            await Task.Delay(60, cancellationToken);
-            updateSpan.End();
+            var result = await jobProcessor.ProcessAsync(message, retryCount, cancellationToken);
 
             stopwatch.Stop();
 
             _logger.LogInformation(
                 "ingestion_job_completed {job_id} {tenant_id} {job_duration_ms} {batch_size} {bulk_duration_ms} {failed_items_count}",
-                jobId,
-                tenantId,
+                result.JobId,
+                result.TenantId,
                 stopwatch.ElapsedMilliseconds,
-                batchSize,
-                bulkStopwatch.ElapsedMilliseconds,
-                failedItems);
+                result.AttemptedCount,
+                result.BulkDurationMs,
+                result.FailedCount);
 
             await auditLogWriter.WriteAsync(
                 new AuditLogEntry(
@@ -189,13 +175,15 @@ public sealed class Worker : BackgroundService
                     "worker",
                     new
                     {
-                        job_id = jobId,
-                        tenant_id = tenantId,
-                        source_type = sourceType,
-                        batch_size = batchSize,
+                        job_id = result.JobId,
+                        tenant_id = result.TenantId,
+                        source_type = result.SourceType,
+                        batch_size = result.AttemptedCount,
+                        processed_count = result.ProcessedCount,
                         job_duration_ms = stopwatch.ElapsedMilliseconds,
-                        bulk_duration_ms = bulkStopwatch.ElapsedMilliseconds,
-                        failed_items_count = failedItems,
+                        bulk_duration_ms = result.BulkDurationMs,
+                        es_took_ms = result.EsTookMs,
+                        failed_items_count = result.FailedCount,
                         retry_count = retryCount,
                         correlation_id = correlationId
                     }),
@@ -235,6 +223,7 @@ public sealed class Worker : BackgroundService
         finally
         {
             transaction.End();
+            TenantContext.TenantId = null;
         }
     }
 

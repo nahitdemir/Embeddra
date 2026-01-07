@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
 using Embeddra.BuildingBlocks.Audit;
@@ -5,6 +6,7 @@ using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
 using Embeddra.BuildingBlocks.Messaging;
 using Embeddra.BuildingBlocks.Observability;
+using Embeddra.Worker.Infrastructure.DependencyInjection;
 using Embeddra.Worker.Host;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -20,7 +22,23 @@ builder.Services.AddHostedService<Worker>();
 builder.Services.AddHealthChecks();
 builder.Services.AddEmbeddraAuditLogging(builder.Configuration);
 builder.Services.AddEmbeddraRabbitMq(builder.Configuration);
+builder.Services.AddEmbeddraWorkerInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, AdminRequestResponseLoggingPolicy>();
+builder.Services.AddHttpClient("elasticsearch", client =>
+{
+    var elasticsearchUrl = builder.Configuration["ELASTICSEARCH_URL"] ?? "http://localhost:9200";
+    var elasticsearchUser = builder.Configuration["ELASTICSEARCH_USERNAME"];
+    var elasticsearchPassword = builder.Configuration["ELASTICSEARCH_PASSWORD"];
+
+    client.BaseAddress = new Uri(elasticsearchUrl);
+
+    if (!string.IsNullOrWhiteSpace(elasticsearchUser) || !string.IsNullOrWhiteSpace(elasticsearchPassword))
+    {
+        var credentials = $"{elasticsearchUser ?? "elastic"}:{elasticsearchPassword ?? string.Empty}";
+        var token = Convert.ToBase64String(Encoding.ASCII.GetBytes(credentials));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+    }
+});
 builder.Services.AddAllElasticApm();
 
 var app = builder.Build();
