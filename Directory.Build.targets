@@ -11,5 +11,6 @@
     <PackageReference Update="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEntityFrameworkCorePostgresVersion)" />
     <PackageReference Update="Microsoft.Extensions.Hosting" Version="$(MicrosoftExtensionsHostingVersion)" />
     <PackageReference Update="Swashbuckle.AspNetCore" Version="$(SwashbuckleAspNetCoreVersion)" />
+    <PackageReference Update="RabbitMQ.Client" Version="$(RabbitMqClientVersion)" />
   </ItemGroup>
 </Project>

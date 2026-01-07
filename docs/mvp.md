@@ -8,6 +8,14 @@ Single command (infra + apps):
 ./dev.sh
 ```
 
+Preferred (infra + apps via Docker):
+
+```bash
+./scripts/start-all.sh
+./scripts/start-all.sh --fresh
+./scripts/start-all.sh --stop
+```
+
 Start dependencies:
 
 ```bash

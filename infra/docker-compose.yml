@@ -101,6 +101,78 @@ services:
       - ./setup-ilm.sh:/setup/setup-ilm.sh:ro
     entrypoint: ["/bin/sh", "/setup/setup-ilm.sh"]
 
+  admin-api:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    working_dir: /workspace
+    command: ["dotnet", "run", "--no-launch-profile", "--project", "apps/Admin/Embeddra.Admin.WebApi"]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:5114
+      - ConnectionStrings__AuditDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
+      - ConnectionStrings__AdminDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
+      - RABBITMQ_CONNECTION_STRING=amqp://embeddra:embeddra@rabbitmq:5672/
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=embeddra
+      - ElasticApm__ServerUrls=http://apm-server:8200
+    volumes:
+      - ..:/workspace
+    depends_on:
+      - postgres
+      - elasticsearch
+      - apm-server
+    ports:
+      - "5114:5114"
+    profiles:
+      - apps
+
+  search-api:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    working_dir: /workspace
+    command: ["dotnet", "run", "--no-launch-profile", "--project", "apps/Search/Embeddra.Search.WebApi"]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:5222
+      - ConnectionStrings__AdminDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=embeddra
+      - ElasticApm__ServerUrls=http://apm-server:8200
+    volumes:
+      - ..:/workspace
+    depends_on:
+      - postgres
+      - elasticsearch
+      - apm-server
+    ports:
+      - "5222:5222"
+    profiles:
+      - apps
+
+  worker:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    working_dir: /workspace
+    command: ["dotnet", "run", "--no-launch-profile", "--project", "apps/Worker/Embeddra.Worker.Host"]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:5310
+      - ConnectionStrings__AuditDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
+      - RABBITMQ_CONNECTION_STRING=amqp://embeddra:embeddra@rabbitmq:5672/
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=embeddra
+      - ElasticApm__ServerUrls=http://apm-server:8200
+    volumes:
+      - ..:/workspace
+    depends_on:
+      - postgres
+      - elasticsearch
+      - apm-server
+    ports:
+      - "5310:5310"
+    profiles:
+      - apps
+
 volumes:
   es_data:
   rabbitmq_data:

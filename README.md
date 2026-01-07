@@ -84,7 +84,25 @@ Embeddra/
 
 ## 🚀 Hızlı Başlangıç
 
-### Tüm Servisleri Tek Komutla Başlat
+### ⚡ Tek Komutla Başlat (Önerilen)
+
+```bash
+# Tüm sistemi başlat (Docker + Backend)
+./scripts/start-all.sh
+
+# Fresh start (tüm verileri sil ve sıfırdan başla)
+./scripts/start-all.sh --fresh
+
+# Tüm servisleri durdur
+./scripts/start-all.sh --stop
+```
+
+Bu komut:
+- Docker altyapısını başlatır (Elasticsearch, Kibana, APM, Postgres, Redis, RabbitMQ)
+- Admin, Search ve Worker servislerini başlatır
+- Erişim URL'lerini konsola yazar
+
+### Alternatif: dev.sh
 
 ```bash
 ./dev.sh up

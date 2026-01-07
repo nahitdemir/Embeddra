@@ -1,9 +1,12 @@
 using System.Reflection;
+using Embeddra.BuildingBlocks.Authentication;
 using Embeddra.BuildingBlocks.Audit;
 using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
+using Embeddra.BuildingBlocks.Messaging;
 using Embeddra.BuildingBlocks.Observability;
 using Embeddra.Admin.Infrastructure.DependencyInjection;
+using Embeddra.Admin.WebApi.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +21,15 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddEmbeddraAdminPersistence(builder.Configuration);
 builder.Services.AddEmbeddraAuditLogging(builder.Configuration);
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, AdminRequestResponseLoggingPolicy>();
+builder.Services.AddEmbeddraRabbitMq(builder.Configuration);
+builder.Services.AddSingleton<IngestionJobPublisher>();
+builder.Services.AddEmbeddraApiKeyAuth(builder.Configuration, options =>
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        options.AllowAnonymousPathPrefixes.Add("/swagger");
+    }
+});
 builder.Services.AddAllElasticApm();
 
 var app = builder.Build();

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embeddra Widget Example</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 40px;
+        font-family: "Space Grotesk", "Segoe UI", "Helvetica Neue", sans-serif;
+        background: radial-gradient(circle at top, #fff6e6, #f3efe7);
+        color: #1d1a16;
+      }
+      .page {
+        max-width: 480px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 22px;
+        margin-bottom: 8px;
+      }
+      p {
+        color: #5f5445;
+        margin-top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Embeddra Widget</h1>
+      <p>Update the API settings and start typing to see results.</p>
+      <div id="embeddra-widget"></div>
+    </div>
+
+    <script src="./embed.js"></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', function () {
+        window.EmbeddraWidget.init({
+          container: '#embeddra-widget',
+          apiBaseUrl: 'http://localhost:5222',
+          apiKey: 'dev-api-key-001',
+          tenantId: 'demo',
+          placeholder: 'Search catalog',
+          maxResults: 6
+        });
+      });
+    </script>
+  </body>
+</html>
