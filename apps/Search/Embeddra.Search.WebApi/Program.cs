@@ -5,6 +5,7 @@ using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
 using Embeddra.BuildingBlocks.Observability;
 using Embeddra.BuildingBlocks.Authentication;
+using Embeddra.Search.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, SearchRequestResponseLoggingPolicy>();
+builder.Services.AddEmbeddraSearchInfrastructure(builder.Configuration);
 builder.Services.AddEmbeddraApiKeyAuth(builder.Configuration, options =>
 {
     if (builder.Environment.IsDevelopment())
