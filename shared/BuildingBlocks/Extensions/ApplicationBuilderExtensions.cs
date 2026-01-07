@@ -4,6 +4,7 @@ using Embeddra.BuildingBlocks.Exceptions;
 using Embeddra.BuildingBlocks.Logging;
 using Embeddra.BuildingBlocks.Tenancy;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Embeddra.BuildingBlocks.Extensions;
 
