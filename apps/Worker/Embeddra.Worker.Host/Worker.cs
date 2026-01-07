@@ -1,53 +1,158 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Embeddra.BuildingBlocks.Audit;
 using Embeddra.BuildingBlocks.Correlation;
 using Embeddra.BuildingBlocks.Messaging;
 using Elastic.Apm;
 using Microsoft.Extensions.DependencyInjection;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
 namespace Embeddra.Worker.Host;
 
 public sealed class Worker : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
+    private static readonly JsonSerializerOptions MessageSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly RabbitMqOptions _options;
+    private readonly RabbitMqTopology _topology;
 
-    public Worker(ILogger<Worker> logger, IServiceScopeFactory scopeFactory)
+    public Worker(
+        ILogger<Worker> logger,
+        IServiceScopeFactory scopeFactory,
+        RabbitMqOptions options,
+        RabbitMqTopology topology)
     {
         _logger = logger;
         _scopeFactory = scopeFactory;
+        _options = options;
+        _topology = topology;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunIngestionJobAsync(stoppingToken);
-            await Task.Delay(Interval, stoppingToken);
+            try
+            {
+                await RunConsumerAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "rabbitmq_consumer_crashed");
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
         }
     }
 
-    private async Task RunIngestionJobAsync(CancellationToken cancellationToken)
+    private async Task RunConsumerAsync(CancellationToken stoppingToken)
     {
-        var correlationId = Guid.NewGuid().ToString("N");
+        var factory = new ConnectionFactory
+        {
+            Uri = new Uri(_options.ConnectionString),
+            DispatchConsumersAsync = true,
+            AutomaticRecoveryEnabled = true
+        };
+
+        using var connection = factory.CreateConnection();
+        using var channel = connection.CreateModel();
+
+        _topology.DeclareIngestionTopology(channel, _options);
+        channel.BasicQos(prefetchSize: 0, prefetchCount: _options.PrefetchCount, global: false);
+
+        var consumer = new AsyncEventingBasicConsumer(channel);
+        consumer.Received += async (_, args) => await HandleMessageAsync(channel, args, stoppingToken);
+
+        var consumerTag = channel.BasicConsume(_options.IngestionQueueName, autoAck: false, consumer: consumer);
+
+        _logger.LogInformation(
+            "rabbitmq_consumer_started {queue} {prefetch}",
+            _options.IngestionQueueName,
+            _options.PrefetchCount);
+
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+        }
+        finally
+        {
+            TryCancelConsumer(channel, consumerTag);
+        }
+    }
+
+    private async Task HandleMessageAsync(IModel channel, BasicDeliverEventArgs args, CancellationToken cancellationToken)
+    {
+        var headers = args.BasicProperties?.Headers ?? new Dictionary<string, object>();
+        var correlationId = RabbitMqCorrelation.GetCorrelationId(headers);
+        if (string.IsNullOrWhiteSpace(correlationId) && !string.IsNullOrWhiteSpace(args.BasicProperties?.CorrelationId))
+        {
+            correlationId = args.BasicProperties?.CorrelationId;
+        }
+
+        correlationId ??= Guid.NewGuid().ToString("N");
         CorrelationContext.CorrelationId = correlationId;
 
+        var retryCount = RabbitMqHeaders.GetRetryCount(headers);
+        IngestionJobMessage? message = null;
+
+        try
+        {
+            message = DeserializeMessage(args.Body);
+            await ProcessIngestionJobAsync(message, correlationId, retryCount, cancellationToken);
+            channel.BasicAck(args.DeliveryTag, multiple: false);
+        }
+        catch (Exception ex)
+        {
+            HandleProcessingFailure(channel, args, message, correlationId, retryCount, ex);
+        }
+        finally
+        {
+            CorrelationContext.CorrelationId = null;
+        }
+    }
+
+    private async Task ProcessIngestionJobAsync(
+        IngestionJobMessage message,
+        string correlationId,
+        int retryCount,
+        CancellationToken cancellationToken)
+    {
         var transaction = Agent.Tracer.StartTransaction("IngestionJob", "background");
         var stopwatch = Stopwatch.StartNew();
 
         using var scope = _scopeFactory.CreateScope();
         var auditLogWriter = scope.ServiceProvider.GetRequiredService<IAuditLogWriter>();
 
+        var jobId = message.JobId ?? "unknown";
+        var tenantId = message.TenantId ?? "unknown";
+        var sourceType = message.SourceType ?? "unknown";
+        var batchSize = message.Count > 0 ? message.Count : Random.Shared.Next(50, 250);
+        var failedItems = 0;
+
         try
         {
             await auditLogWriter.WriteAsync(
-                new AuditLogEntry(AuditActions.IngestionJobStarted, "worker", new { correlation_id = correlationId }),
+                new AuditLogEntry(
+                    AuditActions.IngestionJobStarted,
+                    "worker",
+                    new
+                    {
+                        job_id = jobId,
+                        tenant_id = tenantId,
+                        source_type = sourceType,
+                        retry_count = retryCount,
+                        correlation_id = correlationId
+                    }),
                 cancellationToken);
-
-            var batchSize = Random.Shared.Next(50, 250);
-            var failedItems = 0;
 
             var dbSpan = transaction.StartSpan("DB.FetchProductsRaw", "db");
             await Task.Delay(80, cancellationToken);
@@ -67,18 +172,12 @@ public sealed class Worker : BackgroundService
             await Task.Delay(60, cancellationToken);
             updateSpan.End();
 
-            var headers = new Dictionary<string, object>();
-            RabbitMqCorrelation.SetCorrelationId(headers, correlationId);
-            var propagatedCorrelationId = RabbitMqCorrelation.GetCorrelationId(headers);
-
-            var rabbitSpan = transaction.StartSpan("Rabbit.Ack", "messaging");
-            await Task.Delay(30, cancellationToken);
-            rabbitSpan.End();
-
             stopwatch.Stop();
 
             _logger.LogInformation(
-                "ingestion_job_completed {job_duration_ms} {batch_size} {bulk_duration_ms} {failed_items_count}",
+                "ingestion_job_completed {job_id} {tenant_id} {job_duration_ms} {batch_size} {bulk_duration_ms} {failed_items_count}",
+                jobId,
+                tenantId,
                 stopwatch.ElapsedMilliseconds,
                 batchSize,
                 bulkStopwatch.ElapsedMilliseconds,
@@ -90,11 +189,15 @@ public sealed class Worker : BackgroundService
                     "worker",
                     new
                     {
+                        job_id = jobId,
+                        tenant_id = tenantId,
+                        source_type = sourceType,
                         batch_size = batchSize,
                         job_duration_ms = stopwatch.ElapsedMilliseconds,
                         bulk_duration_ms = bulkStopwatch.ElapsedMilliseconds,
                         failed_items_count = failedItems,
-                        correlation_id = propagatedCorrelationId
+                        retry_count = retryCount,
+                        correlation_id = correlationId
                     }),
                 cancellationToken);
         }
@@ -103,7 +206,13 @@ public sealed class Worker : BackgroundService
             stopwatch.Stop();
             transaction.CaptureException(ex);
 
-            _logger.LogError(ex, "ingestion_job_failed {job_duration_ms}", stopwatch.ElapsedMilliseconds);
+            _logger.LogError(
+                ex,
+                "ingestion_job_failed {job_id} {tenant_id} {job_duration_ms} {retry_count}",
+                jobId,
+                tenantId,
+                stopwatch.ElapsedMilliseconds,
+                retryCount);
 
             await auditLogWriter.WriteAsync(
                 new AuditLogEntry(
@@ -111,15 +220,115 @@ public sealed class Worker : BackgroundService
                     "worker",
                     new
                     {
+                        job_id = jobId,
+                        tenant_id = tenantId,
+                        source_type = sourceType,
                         job_duration_ms = stopwatch.ElapsedMilliseconds,
+                        retry_count = retryCount,
+                        correlation_id = correlationId,
                         error_summary = ex.Message
                     }),
                 cancellationToken);
+
+            throw;
         }
         finally
         {
             transaction.End();
-            CorrelationContext.CorrelationId = null;
+        }
+    }
+
+    private void HandleProcessingFailure(
+        IModel channel,
+        BasicDeliverEventArgs args,
+        IngestionJobMessage? message,
+        string correlationId,
+        int retryCount,
+        Exception exception)
+    {
+        var nextRetry = retryCount + 1;
+        var shouldRetry = nextRetry <= _options.MaxRetryCount;
+        var targetQueue = shouldRetry ? _options.RetryQueueName : _options.DeadLetterQueueName;
+        var outgoingRetryCount = shouldRetry ? nextRetry : retryCount;
+        var jobId = message?.JobId ?? "unknown";
+        var tenantId = message?.TenantId ?? "unknown";
+
+        try
+        {
+            var properties = CreatePublishProperties(channel, args.BasicProperties, correlationId, outgoingRetryCount);
+            channel.BasicPublish(_options.ExchangeName, targetQueue, properties, args.Body);
+            channel.BasicAck(args.DeliveryTag, multiple: false);
+
+            _logger.LogWarning(
+                exception,
+                "ingestion_job_retry_enqueued {queue} {retry_count} {job_id} {tenant_id} {correlation_id}",
+                targetQueue,
+                outgoingRetryCount,
+                jobId,
+                tenantId,
+                correlationId);
+        }
+        catch (Exception publishException)
+        {
+            _logger.LogError(
+                publishException,
+                "ingestion_job_retry_publish_failed {queue} {job_id} {tenant_id} {correlation_id}",
+                targetQueue,
+                jobId,
+                tenantId,
+                correlationId);
+
+            channel.BasicNack(args.DeliveryTag, multiple: false, requeue: true);
+        }
+    }
+
+    private static IBasicProperties CreatePublishProperties(
+        IModel channel,
+        IBasicProperties? originalProperties,
+        string correlationId,
+        int retryCount)
+    {
+        var properties = channel.CreateBasicProperties();
+        properties.Persistent = true;
+        properties.ContentType = originalProperties?.ContentType ?? "application/json";
+        properties.ContentEncoding = originalProperties?.ContentEncoding;
+        properties.Type = originalProperties?.Type;
+        properties.AppId = originalProperties?.AppId;
+        properties.MessageId = originalProperties?.MessageId ?? Guid.NewGuid().ToString("N");
+        properties.CorrelationId = correlationId;
+
+        var headers = new Dictionary<string, object>(originalProperties?.Headers ?? new Dictionary<string, object>());
+        RabbitMqCorrelation.SetCorrelationId(headers, correlationId);
+        RabbitMqHeaders.SetRetryCount(headers, retryCount);
+        properties.Headers = headers;
+
+        return properties;
+    }
+
+    private static IngestionJobMessage DeserializeMessage(ReadOnlyMemory<byte> body)
+    {
+        if (body.IsEmpty)
+        {
+            throw new InvalidOperationException("Ingestion job payload is empty.");
+        }
+
+        var message = JsonSerializer.Deserialize<IngestionJobMessage>(body.Span, MessageSerializerOptions);
+        if (message is null)
+        {
+            throw new InvalidOperationException("Ingestion job payload is invalid.");
+        }
+
+        return message;
+    }
+
+    private static void TryCancelConsumer(IModel channel, string consumerTag)
+    {
+        try
+        {
+            channel.BasicCancel(consumerTag);
+        }
+        catch
+        {
         }
     }
 }

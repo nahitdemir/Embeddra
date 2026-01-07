@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Embeddra.BuildingBlocks.Messaging;
 
 public static class RabbitMqCorrelation
@@ -9,11 +11,22 @@ public static class RabbitMqCorrelation
         headers[CorrelationHeader] = correlationId;
     }
 
-    public static string? GetCorrelationId(IDictionary<string, object> headers)
+    public static string? GetCorrelationId(IDictionary<string, object>? headers)
     {
+        if (headers is null)
+        {
+            return null;
+        }
+
         if (headers.TryGetValue(CorrelationHeader, out var value) && value is not null)
         {
-            return value.ToString();
+            return value switch
+            {
+                byte[] bytes => Encoding.UTF8.GetString(bytes),
+                ReadOnlyMemory<byte> memory => Encoding.UTF8.GetString(memory.Span),
+                string text => text,
+                _ => value.ToString()
+            };
         }
 
         return null;
