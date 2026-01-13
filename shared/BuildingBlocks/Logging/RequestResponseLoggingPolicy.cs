@@ -32,7 +32,7 @@ public sealed class AdminRequestResponseLoggingPolicy : IRequestResponseLoggingP
 
 public sealed class SearchRequestResponseLoggingPolicy : IRequestResponseLoggingPolicy
 {
-    private const double SuccessSampleRate = 0.10;
+    private const double SuccessSampleRate = 1.0;
 
     public bool ShouldLogBody(HttpContext context, int statusCode)
     {

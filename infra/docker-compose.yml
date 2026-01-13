@@ -8,7 +8,17 @@ services:
       - xpack.security.http.ssl.enabled=false
       - xpack.security.transport.ssl.enabled=false
       - ELASTIC_PASSWORD=embeddra
+      # Optimized for faster startup in development
+      # Minimum 512MB required for Elasticsearch
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+      # Faster startup optimizations
+      - action.auto_create_index=true
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - xpack.monitoring.collection.enabled=false
+      - xpack.ml.enabled=false
+      - xpack.graph.enabled=false
+      - xpack.watcher.enabled=false
     ulimits:
       memlock:
         soft: -1
@@ -17,19 +27,39 @@ services:
       - es_data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
+    healthcheck:
+      # Simple health check using curl (available in ES container)
+      # Check cluster health with yellow status (acceptable for single node)
+      test: ["CMD-SHELL", "curl -f -s -u elastic:embeddra 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 40s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.12.2
     environment:
       - ELASTICSEARCH_USERNAME=kibana_system
       - ELASTICSEARCH_PASSWORD=embeddra
+      # Optimize for faster startup
+      - NODE_OPTIONS=--max-old-space-size=512
+      - KIBANA_LOADING_DEFAULTAPP=false
     depends_on:
-      - elasticsearch
-      - package-registry
+      elasticsearch:
+        condition: service_healthy
+      package-registry:
+        condition: service_started
     volumes:
       - ./kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     ports:
       - "5601:5601"
+    healthcheck:
+      # Check if Kibana is responding - use simple status endpoint
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
   package-registry:
     image: docker.elastic.co/package-registry/distribution:8.12.2
@@ -41,24 +71,37 @@ services:
       - ELASTIC_USERNAME=elastic
       - ELASTIC_PASSWORD=embeddra
     depends_on:
-      - elasticsearch
-      - kibana
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_healthy
     volumes:
       - ./apm-server.yml:/usr/share/apm-server/apm-server.yml:ro
     ports:
       - "8200:8200"
+    healthcheck:
+      # APM Server container doesn't have curl/wget/nc
+      # Check if apm-server process is running
+      test: ["CMD-SHELL", "pgrep -f 'apm-server' > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   kibana-setup:
     image: curlimages/curl:8.6.0
     depends_on:
-      - kibana
-      - package-registry
+      kibana:
+        condition: service_healthy
+      package-registry:
+        condition: service_started
     environment:
       - KIBANA_USERNAME=elastic
       - KIBANA_PASSWORD=embeddra
     volumes:
       - ./setup-fleet.sh:/setup/setup-fleet.sh:ro
     entrypoint: ["/bin/sh", "/setup/setup-fleet.sh"]
+    restart: "no"
 
   rabbitmq:
     image: rabbitmq:3.13-management
@@ -70,6 +113,12 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   postgres:
     image: postgres:16
@@ -81,6 +130,12 @@ services:
       - pg_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U embeddra"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
@@ -89,6 +144,12 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
 
   es-setup:
     image: curlimages/curl:8.6.0
@@ -104,10 +165,11 @@ services:
   admin-api:
     image: mcr.microsoft.com/dotnet/sdk:8.0
     working_dir: /workspace
-    command: ["dotnet", "run", "--no-launch-profile", "--project", "apps/Admin/Embeddra.Admin.WebApi"]
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--project", "apps/Admin/Embeddra.Admin.WebApi", "--urls", "http://0.0.0.0:5114"]
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://0.0.0.0:5114
+      - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
       - ConnectionStrings__AuditDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
       - ConnectionStrings__AdminDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
       - RABBITMQ_CONNECTION_STRING=amqp://embeddra:embeddra@rabbitmq:5672/
@@ -115,24 +177,37 @@ services:
       - ELASTICSEARCH_USERNAME=elastic
       - ELASTICSEARCH_PASSWORD=embeddra
       - ElasticApm__ServerUrls=http://apm-server:8200
+      - SEARCH_API_BASE_URL=http://search-api:5222
     volumes:
       - ..:/workspace
     depends_on:
-      - postgres
-      - elasticsearch
-      - apm-server
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      apm-server:
+        condition: service_healthy
     ports:
       - "5114:5114"
+    healthcheck:
+      # Check if port is listening using bash built-in TCP check
+      # .NET SDK image has bash available
+      test: ["CMD-SHELL", "timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/5114' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
     profiles:
       - apps
 
   search-api:
     image: mcr.microsoft.com/dotnet/sdk:8.0
     working_dir: /workspace
-    command: ["dotnet", "run", "--no-launch-profile", "--project", "apps/Search/Embeddra.Search.WebApi"]
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--project", "apps/Search/Embeddra.Search.WebApi", "--urls", "http://0.0.0.0:5222"]
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://0.0.0.0:5222
+      - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
       - ConnectionStrings__AdminDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=elastic
@@ -141,21 +216,33 @@ services:
     volumes:
       - ..:/workspace
     depends_on:
-      - postgres
-      - elasticsearch
-      - apm-server
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      apm-server:
+        condition: service_healthy
     ports:
       - "5222:5222"
+    healthcheck:
+      # Check if port is listening using bash built-in TCP check
+      # .NET SDK image has bash available
+      test: ["CMD-SHELL", "timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/5222' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
     profiles:
       - apps
 
   worker:
     image: mcr.microsoft.com/dotnet/sdk:8.0
     working_dir: /workspace
-    command: ["dotnet", "run", "--no-launch-profile", "--project", "apps/Worker/Embeddra.Worker.Host"]
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--project", "apps/Worker/Embeddra.Worker.Host", "--urls", "http://0.0.0.0:5310"]
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://0.0.0.0:5310
+      - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
       - ConnectionStrings__AuditDb=Host=postgres;Port=5432;Database=embeddra;Username=embeddra;Password=embeddra
       - RABBITMQ_CONNECTION_STRING=amqp://embeddra:embeddra@rabbitmq:5672/
       - ELASTICSEARCH_URL=http://elasticsearch:9200
@@ -165,11 +252,24 @@ services:
     volumes:
       - ..:/workspace
     depends_on:
-      - postgres
-      - elasticsearch
-      - apm-server
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      apm-server:
+        condition: service_healthy
     ports:
       - "5310:5310"
+    healthcheck:
+      # Check if port is listening using bash built-in TCP check
+      # .NET SDK image has bash available
+      test: ["CMD-SHELL", "timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/5310' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
     profiles:
       - apps
 

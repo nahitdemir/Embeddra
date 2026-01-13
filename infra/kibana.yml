@@ -2,12 +2,19 @@ server.host: "0.0.0.0"
 elasticsearch.hosts: ["http://elasticsearch:9200"]
 elasticsearch.username: "kibana_system"
 elasticsearch.password: "embeddra"
+
+# Encryption keys
 xpack.security.encryptionKey: "embeddra-dev-encryption-key-please-change-0001"
 xpack.encryptedSavedObjects.encryptionKey: "embeddra-dev-encryption-key-please-change-0001"
 xpack.reporting.encryptionKey: "embeddra-dev-encryption-key-please-change-0001"
-xpack.fleet.enabled: true
 
+# Optimize for faster startup
+elasticsearch.requestTimeout: 30000
+elasticsearch.pingTimeout: 3000
+# Note: startupTimeout is not a valid config in Kibana 8.12, removed
+
+# Fleet configuration (can be lazy loaded)
+xpack.fleet.enabled: true
 xpack.fleet.registryUrl: "http://package-registry:8080"
-xpack.fleet.packages:
-  - name: apm
-    version: 8.12.2
+# Don't auto-install packages on startup - let setup script handle it
+xpack.fleet.packages: []

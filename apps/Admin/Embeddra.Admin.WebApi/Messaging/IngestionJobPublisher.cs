@@ -3,9 +3,11 @@ using System.Text.Json;
 using Embeddra.BuildingBlocks.Messaging;
 using RabbitMQ.Client;
 
+using Embeddra.Admin.Application.Services;
+
 namespace Embeddra.Admin.WebApi.Messaging;
 
-public sealed class IngestionJobPublisher
+public sealed class IngestionJobPublisher : IIngestionJobPublisher
 {
     private readonly RabbitMqOptions _options;
     private readonly RabbitMqTopology _topology;

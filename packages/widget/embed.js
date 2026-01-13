@@ -15,7 +15,8 @@
     emptyText: 'No results',
     loadingText: 'Searching...',
     errorText: 'Search failed',
-    onSelect: null
+    onSelect: null,
+    trackClicks: true
   };
 
   function init(options) {
@@ -67,6 +68,7 @@
     var debounceTimer = null;
     var activeController = null;
     var requestId = 0;
+    var lastSearchId = null;
 
     setStatus(status, opts.idleText, 'idle');
 
@@ -135,8 +137,9 @@
           if (currentId !== requestId) {
             return;
           }
+          lastSearchId = data && (data.searchId || data.search_id) ? (data.searchId || data.search_id) : null;
           var items = extractResults(data);
-          renderResults(list, items, opts);
+          renderResults(list, items, opts, lastSearchId);
           if (items.length === 0) {
             setStatus(status, opts.emptyText, 'empty');
           } else {
@@ -190,7 +193,7 @@
     return [];
   }
 
-  function renderResults(list, items, opts) {
+  function renderResults(list, items, opts, searchId) {
     list.innerHTML = '';
     if (!items || items.length === 0) {
       hideResults(list);
@@ -226,6 +229,10 @@
       button.appendChild(metaLine);
       button.addEventListener('click', function (selected) {
         return function () {
+          var productId = getProductId(selected);
+          if (opts.trackClicks && searchId && productId) {
+            sendClick(opts, searchId, productId);
+          }
           if (typeof opts.onSelect === 'function') {
             opts.onSelect(selected);
           }
@@ -259,6 +266,38 @@
       parts.push('$' + source.price);
     }
     return parts.join(' | ');
+  }
+
+  function getProductId(item) {
+    var source = item && (item.source || item._source) ? (item.source || item._source) : item || {};
+    return source.product_id || source.id || item.id || item._id || null;
+  }
+
+  function sendClick(opts, searchId, productId) {
+    if (!opts.apiBaseUrl || !opts.tenantId) {
+      return;
+    }
+
+    var headers = {
+      'Content-Type': 'application/json'
+    };
+    if (opts.apiKey) {
+      headers['X-Api-Key'] = opts.apiKey;
+    }
+    headers['X-Tenant-Id'] = opts.tenantId;
+
+    var payload = JSON.stringify({
+      searchId: searchId,
+      productId: productId
+    });
+
+    window.fetch(trimTrailingSlash(opts.apiBaseUrl) + '/search:click', {
+      method: 'POST',
+      headers: headers,
+      body: payload
+    }).catch(function () {
+      return;
+    });
   }
 
   function setStatus(target, text, state) {

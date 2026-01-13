@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Npgsql;
+using Embeddra.Contracts;
 
 namespace Embeddra.BuildingBlocks.Authentication;
 
@@ -29,7 +30,7 @@ public sealed class PostgresApiKeyValidator : IApiKeyValidator
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, tenant_id, status, revoked_at
+            SELECT id, tenant_id, status, revoked_at, COALESCE(key_type, 'search_public'), allowed_origins
             FROM api_keys
             WHERE key_hash = @hash
             LIMIT 1;
@@ -46,12 +47,14 @@ public sealed class PostgresApiKeyValidator : IApiKeyValidator
         var tenantId = reader.GetString(1);
         var status = reader.GetString(2);
         var revokedAt = reader.IsDBNull(3) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(3);
+        var keyType = reader.IsDBNull(4) ? ApiKeyTypes.SearchPublic : reader.GetString(4);
+        var allowedOrigins = reader.IsDBNull(5) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(5);
 
         if (!string.Equals(status, "active", StringComparison.OrdinalIgnoreCase) || revokedAt is not null)
         {
             return null;
         }
 
-        return new ApiKeyValidationResult(id, tenantId);
+        return new ApiKeyValidationResult(id, tenantId, ApiKeyTypes.Normalize(keyType), allowedOrigins);
     }
 }

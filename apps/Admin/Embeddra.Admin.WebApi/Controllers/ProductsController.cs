@@ -1,14 +1,10 @@
 using System.Text;
 using System.Text.Json;
-using Embeddra.Admin.Domain;
-using Embeddra.Admin.Infrastructure.Persistence;
-using Embeddra.Admin.WebApi.Messaging;
+using Embeddra.Admin.Application.Services;
+using Embeddra.Admin.WebApi.Auth;
 using Embeddra.BuildingBlocks.Audit;
-using Embeddra.BuildingBlocks.Correlation;
-using Embeddra.BuildingBlocks.Messaging;
 using Embeddra.BuildingBlocks.Tenancy;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Embeddra.Admin.WebApi.Controllers;
 
@@ -52,33 +48,38 @@ public sealed class ProductsController : ControllerBase
         "available"
     };
 
-    private readonly AdminDbContext _dbContext;
     private readonly IAuditLogWriter _auditLogWriter;
-    private readonly IngestionJobPublisher _jobPublisher;
+    private readonly IIngestionService _ingestionService;
+    private readonly ITenantService _tenantService;
     private readonly ILogger<ProductsController> _logger;
 
     public ProductsController(
-        AdminDbContext dbContext,
         IAuditLogWriter auditLogWriter,
-        IngestionJobPublisher jobPublisher,
+        IIngestionService ingestionService,
+        ITenantService tenantService,
         ILogger<ProductsController> logger)
     {
-        _dbContext = dbContext;
         _auditLogWriter = auditLogWriter;
-        _jobPublisher = jobPublisher;
+        _ingestionService = ingestionService;
+        _tenantService = tenantService;
         _logger = logger;
     }
 
     [HttpPost("products:bulk")]
     public async Task<IActionResult> BulkUpload([FromBody] JsonElement payload, CancellationToken cancellationToken)
     {
+        if (!AdminAuthContext.CanTenantWrite(HttpContext))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "forbidden" });
+        }
+
         var tenantId = TenantContext.TenantId;
         if (string.IsNullOrWhiteSpace(tenantId))
         {
             return BadRequest(new { error = "tenant_required" });
         }
 
-        if (!await TenantExistsAsync(tenantId, cancellationToken))
+        if (!await _tenantService.ExistsAsync(tenantId, cancellationToken))
         {
             return NotFound(new { error = "tenant_not_found" });
         }
@@ -89,19 +90,16 @@ public sealed class ProductsController : ControllerBase
             return BadRequest(new { error = "invalid_payload" });
         }
 
-        var payloadJson = payload.GetRawText();
-        var enqueueResult = await EnqueueIngestionAsync(
+        var result = await _ingestionService.StartBulkIngestionAsync(
             tenantId,
-            IngestionSourceType.Json,
-            summary.DocumentCount.Value,
-            payloadJson,
+            payload,
             cancellationToken);
 
-        if (!enqueueResult.Success)
+        if (!result.Success)
         {
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
-                new { error = enqueueResult.Error ?? "ingestion_publish_failed", job_id = enqueueResult.JobId });
+                new { error = result.Error ?? "ingestion_publish_failed", job_id = result.JobId });
         }
 
         await _auditLogWriter.WriteAsync(
@@ -111,7 +109,7 @@ public sealed class ProductsController : ControllerBase
                 new
                 {
                     tenant_id = tenantId,
-                    job_id = enqueueResult.JobId,
+                    job_id = result.JobId,
                     document_count = summary.DocumentCount,
                     sample_product_ids = summary.SampleProductIds
                 }),
@@ -119,7 +117,7 @@ public sealed class ProductsController : ControllerBase
 
         return Accepted(new
         {
-            job_id = enqueueResult.JobId,
+            job_id = result.JobId,
             status = "queued",
             count = summary.DocumentCount
         });
@@ -128,13 +126,18 @@ public sealed class ProductsController : ControllerBase
     [HttpPost("products:importCsv")]
     public async Task<IActionResult> ImportCsv([FromBody] string csvPayload, CancellationToken cancellationToken)
     {
+        if (!AdminAuthContext.CanTenantWrite(HttpContext))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "forbidden" });
+        }
+
         var tenantId = TenantContext.TenantId;
         if (string.IsNullOrWhiteSpace(tenantId))
         {
             return BadRequest(new { error = "tenant_required" });
         }
 
-        if (!await TenantExistsAsync(tenantId, cancellationToken))
+        if (!await _tenantService.ExistsAsync(tenantId, cancellationToken))
         {
             return NotFound(new { error = "tenant_not_found" });
         }
@@ -145,19 +148,22 @@ public sealed class ProductsController : ControllerBase
             return BadRequest(new { error = "invalid_payload" });
         }
 
+        // Convert parsed documents to JsonElement is not straightforward without re-serializing.
+        // But IngestionService accepts JsonElement.
+        // We can serialize to JsonDocument and use RootElement.
         var payloadJson = JsonSerializer.Serialize(parseResult.Documents, PayloadSerializerOptions);
-        var enqueueResult = await EnqueueIngestionAsync(
+        using var jsonDoc = JsonDocument.Parse(payloadJson);
+
+        var result = await _ingestionService.StartBulkIngestionAsync(
             tenantId,
-            IngestionSourceType.Csv,
-            parseResult.RowCount,
-            payloadJson,
+            jsonDoc.RootElement.Clone(), // Clone to detach from disposable doc
             cancellationToken);
 
-        if (!enqueueResult.Success)
+        if (!result.Success)
         {
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
-                new { error = enqueueResult.Error ?? "ingestion_publish_failed", job_id = enqueueResult.JobId });
+                new { error = result.Error ?? "ingestion_publish_failed", job_id = result.JobId });
         }
 
         await _auditLogWriter.WriteAsync(
@@ -167,7 +173,7 @@ public sealed class ProductsController : ControllerBase
                 new
                 {
                     tenant_id = tenantId,
-                    job_id = enqueueResult.JobId,
+                    job_id = result.JobId,
                     csv_row_count = parseResult.RowCount,
                     sample_product_ids = parseResult.SampleProductIds
                 }),
@@ -175,80 +181,13 @@ public sealed class ProductsController : ControllerBase
 
         return Accepted(new
         {
-            job_id = enqueueResult.JobId,
+            job_id = result.JobId,
             status = "queued",
             count = parseResult.RowCount
         });
     }
 
-    private async Task<bool> TenantExistsAsync(string tenantId, CancellationToken cancellationToken)
-    {
-        return await _dbContext.Tenants.AnyAsync(x => x.Id == tenantId, cancellationToken);
-    }
 
-    private async Task<EnqueueResult> EnqueueIngestionAsync(
-        string tenantId,
-        IngestionSourceType sourceType,
-        int count,
-        string payloadJson,
-        CancellationToken cancellationToken)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var job = new IngestionJob
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            SourceType = sourceType,
-            Status = IngestionJobStatus.Queued,
-            TotalCount = count,
-            ProcessedCount = 0,
-            FailedCount = 0,
-            CreatedAt = now
-        };
-
-        var raw = new ProductRaw
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            JobId = job.Id,
-            PayloadJson = payloadJson,
-            CreatedAt = now
-        };
-
-        _dbContext.IngestionJobs.Add(job);
-        _dbContext.ProductsRaw.Add(raw);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        var message = new IngestionJobMessage
-        {
-            JobId = job.Id.ToString(),
-            TenantId = tenantId,
-            SourceType = sourceType.ToString(),
-            Count = count
-        };
-
-        var correlationId = CorrelationContext.CorrelationId ?? Guid.NewGuid().ToString("N");
-        try
-        {
-            await _jobPublisher.PublishAsync(message, correlationId, cancellationToken);
-            return new EnqueueResult(job.Id, true, null);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "ingestion_publish_failed {job_id} {tenant_id}",
-                job.Id,
-                tenantId);
-
-            job.Status = IngestionJobStatus.Failed;
-            job.Error = TruncateError(ex.Message);
-            job.CompletedAt = DateTimeOffset.UtcNow;
-            await _dbContext.SaveChangesAsync(cancellationToken);
-
-            return new EnqueueResult(job.Id, false, "ingestion_publish_failed");
-        }
-    }
 
     private string ResolveActor()
     {
@@ -601,5 +540,5 @@ public sealed class ProductsController : ControllerBase
             new List<string>());
     }
 
-    private sealed record EnqueueResult(Guid JobId, bool Success, string? Error);
+
 }

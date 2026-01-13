@@ -15,6 +15,11 @@ until curl -s $AUTH "$ES_URL" >/dev/null; do
   sleep 2
 done
 
+echo "Setting passwords..."
+curl -s $AUTH -X POST "$ES_URL/_security/user/kibana_system/_password" \
+  -H "Content-Type: application/json" \
+  -d "{\"password\": \"${ES_PASSWORD}\"}" >/dev/null
+
 curl -s $AUTH -X PUT "$ES_URL/_ilm/policy/logs-embeddra-7d-delete" \
   -H "Content-Type: application/json" \
   -d '{

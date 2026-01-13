@@ -5,7 +5,9 @@ using Embeddra.BuildingBlocks.Extensions;
 using Embeddra.BuildingBlocks.Logging;
 using Embeddra.BuildingBlocks.Observability;
 using Embeddra.BuildingBlocks.Authentication;
+using Embeddra.Contracts;
 using Embeddra.Search.Infrastructure.DependencyInjection;
+using Embeddra.Search.WebApi.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +17,7 @@ var serviceVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString
 builder.Host.UseEmbeddraSerilog(builder.Configuration, "embeddra-search", "logs-embeddra-search", serviceVersion);
 
 builder.Services.AddControllers();
+builder.Services.AddMemoryCache();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddCors(options =>
@@ -38,12 +41,16 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddSingleton<IRequestResponseLoggingPolicy, SearchRequestResponseLoggingPolicy>();
 builder.Services.AddEmbeddraSearchInfrastructure(builder.Configuration);
+builder.Services.AddSingleton(SearchRateLimitOptions.FromConfiguration(builder.Configuration));
+builder.Services.AddSingleton<SearchRateLimiter>();
 builder.Services.AddEmbeddraApiKeyAuth(builder.Configuration, options =>
 {
     if (builder.Environment.IsDevelopment())
     {
         options.AllowAnonymousPathPrefixes.Add("/swagger");
     }
+
+    options.AllowedKeyTypes.Add(ApiKeyTypes.SearchPublic);
 });
 builder.Services.AddHttpClient("elasticsearch", client =>
 {
@@ -64,8 +71,9 @@ builder.Services.AddAllElasticApm();
 
 var app = builder.Build();
 
-app.UseEmbeddraMiddleware();
 app.UseCors("EmbeddraWidget");
+app.UseEmbeddraMiddleware();
+app.UseMiddleware<SearchAccessMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
