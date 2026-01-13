@@ -4,12 +4,22 @@ Modern, ölçeklenebilir bir .NET 8 monorepo projesi. Clean Architecture prensip
 
 ## 🚀 Özellikler
 
+### Backend
 - **Clean Architecture**: Her servis Domain/Application/Infrastructure/WebApi katmanlarına ayrılmış
 - **Observability**: Elastic APM, Serilog + ECS logging, distributed tracing
 - **Cross-cutting Concerns**: Merkezi logging, correlation, audit, exception handling
 - **Modern Stack**: .NET 8, Elasticsearch, Kibana, RabbitMQ, PostgreSQL, Redis
 - **Developer Experience**: Tek komutla tüm servisleri başlatma, Makefile ve shell script desteği
-- **Security**: Elasticsearch authentication, sensitive data masking
+- **Security**: Elasticsearch authentication, sensitive data masking, API key management
+
+### Frontend (Admin UI)
+- **Next.js 14**: App Router, Server Components, React 18
+- **Premium UI/UX**: Modern, responsive, accessible arayüz
+- **Integration Hub**: Widget entegrasyonu için adım adım rehber (Setup, Origins, Embed, Test)
+- **Search Preview**: Canlı arama testi ve sonuç önizleme
+- **Role-Based Access**: Platform Owner ve Tenant Owner rolleri
+- **Multi-Tenant Support**: Tenant switcher ve otomatik yönlendirme
+- **Internationalization**: TR/EN dil desteği
 
 ## 📋 Teknoloji Stack
 
@@ -47,10 +57,15 @@ Embeddra/
 │   │   ├── Embeddra.Search.Application
 │   │   ├── Embeddra.Search.Infrastructure
 │   │   └── Embeddra.Search.WebApi
-│   └── Worker/                   # Background worker servisi
-│       ├── Embeddra.Worker.Application
-│       ├── Embeddra.Worker.Infrastructure
-│       └── Embeddra.Worker.Host
+│   ├── Worker/                   # Background worker servisi
+│   │   ├── Embeddra.Worker.Application
+│   │   ├── Embeddra.Worker.Infrastructure
+│   │   └── Embeddra.Worker.Host
+│   └── admin-ui/                 # Next.js Admin UI (Frontend)
+│       ├── app/                  # Next.js App Router
+│       ├── components/           # React bileşenleri
+│       ├── lib/                  # Utilities ve helpers
+│       └── docs/                 # Frontend dokümantasyonu
 ├── shared/
 │   └── BuildingBlocks/          # Cross-cutting concerns
 │       ├── Audit/               # Audit logging
@@ -67,6 +82,8 @@ Embeddra/
 │   ├── kibana.yml               # Kibana yapılandırması
 │   ├── setup-ilm.sh             # Index Lifecycle Management
 │   └── setup-fleet.sh           # Fleet & APM package setup
+├── scripts/                      # Utility scripts
+│   └── start-all.sh             # Tek komutla tüm servisleri başlatma
 ├── docs/                         # Dokümantasyon
 │   ├── architecture.md          # Mimari dokümantasyonu
 │   ├── mvp.md                   # MVP notları
@@ -180,6 +197,12 @@ dotnet run --project apps/Worker/Embeddra.Worker.Host
 | Admin API | 5114 | http://localhost:5114/health | http://localhost:5114/swagger |
 | Search API | 5222 | http://localhost:5222/health | http://localhost:5222/swagger |
 | Worker | 5310 | http://localhost:5310/health | - |
+
+### Frontend (Admin UI)
+
+| Servis | Port | Açıklama |
+|--------|------|----------|
+| Admin UI (Next.js) | 3000 | http://localhost:3000 | Platform ve Tenant yönetim arayüzü |
 
 ### Infrastructure Servisleri
 
