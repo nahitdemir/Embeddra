@@ -2,8 +2,11 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Embeddra.BuildingBlocks.Correlation;
 using Embeddra.BuildingBlocks.Tenancy;
 using Embeddra.Search.Application.Embedding;
+using Embeddra.Search.Infrastructure.Analytics;
+using Embeddra.Search.Infrastructure.Tuning;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Embeddra.Search.WebApi.Controllers;
@@ -22,15 +25,21 @@ public sealed class SearchController : ControllerBase
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IEmbeddingClient _embeddingClient;
+    private readonly SearchAnalyticsWriter _analyticsWriter;
+    private readonly SearchTuningRepository _tuningRepository;
     private readonly ILogger<SearchController> _logger;
 
     public SearchController(
         IHttpClientFactory httpClientFactory,
         IEmbeddingClient embeddingClient,
+        SearchAnalyticsWriter analyticsWriter,
+        SearchTuningRepository tuningRepository,
         ILogger<SearchController> logger)
     {
         _httpClientFactory = httpClientFactory;
         _embeddingClient = embeddingClient;
+        _analyticsWriter = analyticsWriter;
+        _tuningRepository = tuningRepository;
         _logger = logger;
     }
 
@@ -49,6 +58,8 @@ public sealed class SearchController : ControllerBase
         }
 
         var indexName = ResolveIndexName(tenantId);
+        var tuning = await _tuningRepository.GetTuningAsync(tenantId, cancellationToken);
+        var expandedQuery = ExpandQuery(request.Query!, tuning.Synonyms);
         var size = NormalizeSize(request.Size);
         var bm25Size = Math.Min(Math.Max(size * 2, size), MaxKnnK);
         var knnK = NormalizeKnnK(request.KnnK, size);
@@ -58,11 +69,19 @@ public sealed class SearchController : ControllerBase
         if (!await IndexExistsAsync(indexName, cancellationToken))
         {
             _logger.LogInformation("search_index_missing {index_name}", indexName);
-            return Ok(new SearchResponse(0, 0, 0, Array.Empty<SearchHit>(), SearchFacets.Empty));
+            var fallbackId = await _analyticsWriter.RecordSearchAsync(
+                tenantId,
+                request.Query!.Trim(),
+                0,
+                null,
+                null,
+                CorrelationContext.CorrelationId,
+                cancellationToken);
+            return Ok(new SearchResponse(fallbackId.ToString("N"), 0, 0, 0, Array.Empty<SearchHit>(), SearchFacets.Empty));
         }
 
         var stopwatch = Stopwatch.StartNew();
-        var bm25Task = ExecuteBm25SearchAsync(indexName, request.Query!, bm25Size, filters, cancellationToken);
+        var bm25Task = ExecuteBm25SearchAsync(indexName, expandedQuery, bm25Size, filters, tuning.Boosts, cancellationToken);
 
         var embeddings = await _embeddingClient.EmbedAsync(new[] { request.Query! }, cancellationToken);
         if (embeddings.Count == 0)
@@ -77,10 +96,19 @@ public sealed class SearchController : ControllerBase
         var knnResult = await knnTask;
 
         var mergedHits = MergeHits(bm25Result.Hits, knnResult.Hits, size);
+        mergedHits = await ApplyPinnedResultsAsync(indexName, mergedHits, request.Query!, tuning.Pins, size, cancellationToken);
         stopwatch.Stop();
 
         var total = bm25Result.Total ?? mergedHits.Count;
         var noResult = mergedHits.Count == 0;
+        var searchId = await _analyticsWriter.RecordSearchAsync(
+            tenantId,
+            request.Query!.Trim(),
+            mergedHits.Count,
+            ToIntOrNull(bm25Result.TookMs),
+            ToIntOrNull(knnResult.TookMs),
+            CorrelationContext.CorrelationId,
+            cancellationToken);
 
         _logger.LogInformation(
             "search_metrics {duration_ms} {bm25_took_ms} {knn_took_ms} {result_count} {no_result} {index_name}",
@@ -92,6 +120,7 @@ public sealed class SearchController : ControllerBase
             indexName);
 
         var response = new SearchResponse(
+            searchId.ToString("N"),
             bm25Result.TookMs,
             knnResult.TookMs,
             total,
@@ -101,14 +130,44 @@ public sealed class SearchController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPost("search:click")]
+    [HttpPost("events/click")]
+    public async Task<IActionResult> RegisterClick([FromBody] SearchClickRequest request, CancellationToken cancellationToken)
+    {
+        var tenantId = TenantContext.TenantId;
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return BadRequest(new { error = "tenant_required" });
+        }
+
+        if (!Guid.TryParse(request.SearchId, out var searchId))
+        {
+            return BadRequest(new { error = "invalid_search_id" });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ProductId))
+        {
+            return BadRequest(new { error = "product_id_required" });
+        }
+
+        await _analyticsWriter.RecordClickAsync(
+            tenantId,
+            searchId,
+            request.ProductId.Trim(),
+            cancellationToken);
+
+        return Accepted(new { status = "recorded" });
+    }
+
     private async Task<ElasticsearchSearchResult> ExecuteBm25SearchAsync(
         string indexName,
         string query,
         int size,
         IReadOnlyList<object> filters,
+        IReadOnlyList<SearchBoostRule> boosts,
         CancellationToken cancellationToken)
     {
-        var payload = BuildBm25Query(query, size, filters, DefaultFacetSize);
+        var payload = BuildBm25Query(query, size, filters, boosts, DefaultFacetSize);
         var body = await SendSearchAsync(indexName, payload, cancellationToken);
         return ParseBm25Response(body);
     }
@@ -170,8 +229,24 @@ public sealed class SearchController : ControllerBase
         string query,
         int size,
         IReadOnlyList<object> filters,
+        IReadOnlyList<SearchBoostRule> boosts,
         int facetSize)
     {
+        var shouldBoosts = boosts
+            .Where(x => !string.IsNullOrWhiteSpace(x.Field) && !string.IsNullOrWhiteSpace(x.Value))
+            .Select(x => new Dictionary<string, object?>
+            {
+                ["term"] = new Dictionary<string, object?>
+                {
+                    [x.Field] = new Dictionary<string, object?>
+                    {
+                        ["value"] = x.Value,
+                        ["boost"] = x.Weight <= 0 ? 1 : x.Weight
+                    }
+                }
+            })
+            .ToArray();
+
         return new Dictionary<string, object?>
         {
             ["track_total_hits"] = true,
@@ -190,7 +265,8 @@ public sealed class SearchController : ControllerBase
                             }
                         }
                     },
-                    ["filter"] = filters
+                    ["filter"] = filters,
+                    ["should"] = shouldBoosts
                 }
             },
             ["aggs"] = BuildAggregations(facetSize),
@@ -269,6 +345,152 @@ public sealed class SearchController : ControllerBase
                 }
             }
         };
+    }
+
+    private async Task<List<SearchHit>> ApplyPinnedResultsAsync(
+        string indexName,
+        IReadOnlyList<SearchHit> hits,
+        string query,
+        IReadOnlyList<SearchPinnedResult> pinnedResults,
+        int size,
+        CancellationToken cancellationToken)
+    {
+        if (pinnedResults.Count == 0)
+        {
+            return hits.ToList();
+        }
+
+        var normalized = NormalizeQuery(query);
+        var pinned = pinnedResults.FirstOrDefault(x => NormalizeQuery(x.Query) == normalized);
+        if (pinned is null || pinned.ProductIds.Count == 0)
+        {
+            return hits.ToList();
+        }
+
+        var hitMap = hits.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var orderedPinned = new List<SearchHit>();
+        var missingIds = new List<string>();
+
+        foreach (var id in pinned.ProductIds)
+        {
+            if (hitMap.TryGetValue(id, out var hit))
+            {
+                orderedPinned.Add(hit);
+            }
+            else
+            {
+                missingIds.Add(id);
+            }
+        }
+
+        if (missingIds.Count > 0)
+        {
+            var fetched = await FetchPinnedHitsAsync(indexName, missingIds, cancellationToken);
+            orderedPinned.AddRange(fetched);
+        }
+
+        var pinnedIds = new HashSet<string>(orderedPinned.Select(x => x.Id), StringComparer.Ordinal);
+        var remaining = hits.Where(x => !pinnedIds.Contains(x.Id)).ToList();
+        return orderedPinned.Concat(remaining).Take(size).ToList();
+    }
+
+    private async Task<IReadOnlyList<SearchHit>> FetchPinnedHitsAsync(
+        string indexName,
+        IReadOnlyList<string> ids,
+        CancellationToken cancellationToken)
+    {
+        if (ids.Count == 0)
+        {
+            return Array.Empty<SearchHit>();
+        }
+
+        var client = _httpClientFactory.CreateClient("elasticsearch");
+        var payload = new Dictionary<string, object?>
+        {
+            ["ids"] = ids
+        };
+
+        using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        var response = await client.PostAsync($"/{indexName}/_mget", content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("pinned_fetch_failed {status_code} {body}", response.StatusCode, body);
+            return Array.Empty<SearchHit>();
+        }
+
+        using var document = JsonDocument.Parse(body);
+        if (!document.RootElement.TryGetProperty("docs", out var docsElement)
+            || docsElement.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<SearchHit>();
+        }
+
+        var results = new List<SearchHit>();
+        foreach (var doc in docsElement.EnumerateArray())
+        {
+            if (!doc.TryGetProperty("_id", out var idElement) || idElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var id = idElement.GetString();
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+
+            if (doc.TryGetProperty("found", out var foundElement) && foundElement.ValueKind == JsonValueKind.False)
+            {
+                continue;
+            }
+
+            var source = ExtractSource(doc, id);
+            results.Add(new SearchHit(id, 1, source));
+        }
+
+        return results;
+    }
+
+    private static string ExpandQuery(string query, IReadOnlyList<SearchSynonym> synonyms)
+    {
+        var normalized = NormalizeQuery(query);
+        var match = synonyms.FirstOrDefault(x => NormalizeQuery(x.Term) == normalized);
+        if (match is null || match.Synonyms.Count == 0)
+        {
+            return query;
+        }
+
+        var parts = new List<string> { QuoteIfNeeded(query) };
+        parts.AddRange(match.Synonyms.Select(QuoteIfNeeded));
+        return string.Join(" OR ", parts);
+    }
+
+    private static string NormalizeQuery(string query)
+    {
+        return string.IsNullOrWhiteSpace(query) ? string.Empty : query.Trim().ToLowerInvariant();
+    }
+
+    private static string QuoteIfNeeded(string term)
+    {
+        if (string.IsNullOrWhiteSpace(term))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = term.Trim();
+        return trimmed.Contains(' ', StringComparison.Ordinal) ? $"\"{trimmed}\"" : trimmed;
+    }
+
+    private static int? ToIntOrNull(long? value)
+    {
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        return value.Value > int.MaxValue ? int.MaxValue : (int)value.Value;
     }
 
     private static List<SearchHit> MergeHits(
@@ -729,7 +951,10 @@ public sealed record SearchRequest(
     int? KnnK,
     int? KnnCandidates);
 
+public sealed record SearchClickRequest(string SearchId, string ProductId);
+
 public sealed record SearchResponse(
+    string? SearchId,
     long? TookMs,
     long? KnnTookMs,
     long? Total,

@@ -16,10 +16,29 @@ public sealed class TenantIdMiddleware
 
     public async Task Invoke(HttpContext context)
     {
+        var previousTenant = TenantContext.TenantId;
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            if (!string.IsNullOrWhiteSpace(previousTenant))
+            {
+                context.Items[ItemKey] = previousTenant;
+            }
+
+            await _next(context);
+            return;
+        }
+
         var tenantId = GetTenantId(context);
 
-        TenantContext.TenantId = tenantId;
-        context.Items[ItemKey] = tenantId;
+        if (!string.IsNullOrWhiteSpace(tenantId))
+        {
+            TenantContext.TenantId = tenantId;
+            context.Items[ItemKey] = tenantId;
+        }
+        else if (!string.IsNullOrWhiteSpace(previousTenant))
+        {
+            context.Items[ItemKey] = previousTenant;
+        }
 
         try
         {
@@ -27,7 +46,7 @@ public sealed class TenantIdMiddleware
         }
         finally
         {
-            TenantContext.TenantId = null;
+            TenantContext.TenantId = previousTenant;
         }
     }
 

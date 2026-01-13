@@ -37,6 +37,44 @@ public sealed class ApiKeyAuthenticationMiddleware
             return;
         }
 
+        // Allow internal requests from Admin API (for preview/search proxy)
+        if (context.Request.Headers.TryGetValue("X-Internal-Request", out var internalRequest)
+            && string.Equals(internalRequest.ToString(), "admin-api", StringComparison.OrdinalIgnoreCase))
+        {
+            // Set tenant from X-Tenant-Id header if present
+            var internalTenant = GetHeader(context, _options.TenantHeaderName);
+            if (!string.IsNullOrWhiteSpace(internalTenant))
+            {
+                var prevTenant = TenantContext.TenantId;
+                TenantContext.TenantId = internalTenant;
+                context.Items["TenantId"] = internalTenant;
+                context.Items[ApiKeyAuthenticationContext.ApiKeyIdItemName] = "internal-admin-api";
+                context.Items[ApiKeyAuthenticationContext.RoleItemName] = "internal";
+                
+                try
+                {
+                    await _next(context);
+                }
+                finally
+                {
+                    TenantContext.TenantId = prevTenant;
+                }
+                return;
+            }
+            
+            // If no tenant header, still allow the request but don't set tenant context
+            context.Items[ApiKeyAuthenticationContext.ApiKeyIdItemName] = "internal-admin-api";
+            context.Items[ApiKeyAuthenticationContext.RoleItemName] = "internal";
+            await _next(context);
+            return;
+        }
+
+        if (_options.AllowBearerToken && context.User.Identity?.IsAuthenticated == true)
+        {
+            await _next(context);
+            return;
+        }
+
         if (!context.Request.Headers.TryGetValue(_options.ApiKeyHeaderName, out var apiKeyValues))
         {
             await RejectAsync(context, StatusCodes.Status401Unauthorized, "missing_api_key");
@@ -50,10 +88,24 @@ public sealed class ApiKeyAuthenticationMiddleware
             return;
         }
 
+        if (!string.IsNullOrWhiteSpace(_options.PlatformApiKey)
+            && string.Equals(apiKey, _options.PlatformApiKey, StringComparison.Ordinal))
+        {
+            await HandlePlatformKeyAsync(context);
+            return;
+        }
+
         var validationResult = await _validator.ValidateAsync(apiKey, context.RequestAborted);
         if (validationResult is null)
         {
             await RejectAsync(context, StatusCodes.Status401Unauthorized, "invalid_api_key");
+            return;
+        }
+
+        if (_options.AllowedKeyTypes.Count > 0
+            && !_options.AllowedKeyTypes.Contains(validationResult.KeyType))
+        {
+            await RejectAsync(context, StatusCodes.Status403Forbidden, "api_key_scope_not_allowed");
             return;
         }
 
@@ -68,7 +120,10 @@ public sealed class ApiKeyAuthenticationMiddleware
         var previousTenant = TenantContext.TenantId;
         TenantContext.TenantId = validationResult.TenantId;
         context.Items[TenantIdMiddleware.ItemKey] = validationResult.TenantId;
-        context.Items["ApiKeyId"] = validationResult.ApiKeyId;
+        context.Items[ApiKeyAuthenticationContext.ApiKeyIdItemName] = validationResult.ApiKeyId;
+        context.Items[ApiKeyAuthenticationContext.ApiKeyTypeItemName] = validationResult.KeyType;
+        context.Items[ApiKeyAuthenticationContext.RoleItemName] = "api_key";
+        context.Items[ApiKeyAuthenticationContext.AllowedOriginsItemName] = validationResult.AllowedOrigins;
 
         try
         {
@@ -119,5 +174,30 @@ public sealed class ApiKeyAuthenticationMiddleware
         _logger.LogWarning("api_key_rejected {status_code} {reason}", statusCode, reason);
         context.Response.StatusCode = statusCode;
         await context.Response.WriteAsJsonAsync(new { error = reason });
+    }
+
+    private async Task HandlePlatformKeyAsync(HttpContext context)
+    {
+        var requestedTenant = GetHeader(context, _options.TenantHeaderName);
+        var previousTenant = TenantContext.TenantId;
+
+        if (!string.IsNullOrWhiteSpace(requestedTenant))
+        {
+            TenantContext.TenantId = requestedTenant;
+            context.Items[TenantIdMiddleware.ItemKey] = requestedTenant;
+        }
+
+        context.Items[ApiKeyAuthenticationContext.ApiKeyIdItemName] = "platform";
+        context.Items[ApiKeyAuthenticationContext.PlatformKeyItemName] = true;
+        context.Items[ApiKeyAuthenticationContext.RoleItemName] = "platform";
+
+        try
+        {
+            await _next(context);
+        }
+        finally
+        {
+            TenantContext.TenantId = previousTenant;
+        }
     }
 }

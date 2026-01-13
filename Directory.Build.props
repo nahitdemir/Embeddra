@@ -12,6 +12,7 @@
     <MicrosoftEntityFrameworkCoreVersion>8.0.4</MicrosoftEntityFrameworkCoreVersion>
     <NpgsqlEntityFrameworkCorePostgresVersion>8.0.4</NpgsqlEntityFrameworkCorePostgresVersion>
     <MicrosoftExtensionsHostingVersion>8.0.0</MicrosoftExtensionsHostingVersion>
+    <MicrosoftAspNetCoreAuthenticationJwtBearerVersion>8.0.4</MicrosoftAspNetCoreAuthenticationJwtBearerVersion>
     <SwashbuckleAspNetCoreVersion>6.4.0</SwashbuckleAspNetCoreVersion>
     <RabbitMqClientVersion>6.8.1</RabbitMqClientVersion>
   </PropertyGroup>

@@ -10,6 +10,7 @@
     <PackageReference Update="Microsoft.EntityFrameworkCore" Version="$(MicrosoftEntityFrameworkCoreVersion)" />
     <PackageReference Update="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEntityFrameworkCorePostgresVersion)" />
     <PackageReference Update="Microsoft.Extensions.Hosting" Version="$(MicrosoftExtensionsHostingVersion)" />
+    <PackageReference Update="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(MicrosoftAspNetCoreAuthenticationJwtBearerVersion)" />
     <PackageReference Update="Swashbuckle.AspNetCore" Version="$(SwashbuckleAspNetCoreVersion)" />
     <PackageReference Update="RabbitMQ.Client" Version="$(RabbitMqClientVersion)" />
   </ItemGroup>
