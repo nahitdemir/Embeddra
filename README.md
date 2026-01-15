@@ -347,13 +347,6 @@ Her servis `/health` endpoint'i üzerinden health check sağlar:
 - Search API: http://localhost:5222/health
 - Worker: http://localhost:5310/health
 
-## 📝 Lisans
-
-[Lisans bilgisi buraya eklenecek]
-
-## 🤝 Katkıda Bulunma
-
-[Katkıda bulunma rehberi buraya eklenecek]
 
 ---
 
